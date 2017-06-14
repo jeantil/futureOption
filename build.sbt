@@ -14,15 +14,27 @@ lazy val `ultimate-build` = (project in file(".")).enablePlugins(PlayScala, Buil
 buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
 buildInfoPackage := "eu.byjean"
 
+// Maven convention says that if you're working on `a.b.c-SNAPSHOT`, the NEXT RELEASE will be `a.b.c`.
+// The default behaviour of sbt-git says if the most recent release was `a.b.c`, you're working on `a.b.c-SNAPSHOT`.
+//
+// Since sbt-git is breaking convention, we work around by bumping the inferred version using our chosen version
+// bumping strategy - the value of the `releaseVersionBump` setting - so that sbt-release's implementation can save
+// us from having to write unnecessary code.
+def bumpVersion(inputVersion: String): String = {
+  Version.apply(inputVersion)
+    .map(_.bump(Version.Bump.default).string)
+    .getOrElse(versionFormatError)
+}
+
 //git
 showCurrentGitBranch
 git.useGitDescribe := true
 git.baseVersion := "0.0.0"
 val VersionRegex = "v([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
 git.gitTagToVersionNumber := {
-  case VersionRegex(v,"SNAPSHOT") => Some(s"$v-SNAPSHOT")
-  case VersionRegex(v,"") => Some(v)
-  case VersionRegex(v,s) => Some(s"$v-$s-SNAPSHOT")
+  case VersionRegex(v, "SNAPSHOT") => Some(s"${bumpVersion(v)}-SNAPSHOT")
+  case VersionRegex(v, "") => Some(v)
+  case VersionRegex(v, s) => Some(s"${bumpVersion(v)}-$s-SNAPSHOT")
   case v => None
 }
 
@@ -46,12 +58,6 @@ def setVersionOnly(selectVersion: Versions => String): ReleaseStep =  { st: Stat
 }
 
 lazy val setReleaseVersion: ReleaseStep = setVersionOnly(_._1)
-
-releaseVersion <<= (releaseVersionBump)( bumper=>{
-   ver => Version(ver)
-          .map(_.withoutQualifier)
-          .map(_.bump(bumper).string).getOrElse(versionFormatError)
-})
 
 val showNextVersion = settingKey[String]("the future version once releaseNextVersion has been applied to it")
 val showReleaseVersion = settingKey[String]("the future version once releaseNextVersion has been applied to it")
